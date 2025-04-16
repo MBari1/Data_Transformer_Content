@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Xml.Linq;
 
 class Program
@@ -9,43 +10,65 @@ class Program
     static void Main()
     {
         string wxsFilePath = @"path\to\your\file.wxs";
-        string wxsContent = File.ReadAllText(wxsFilePath);
+        string baseDirectory = @"base\folder\path"; // Root where files like "Folder1\All_files\xyz.txt" reside
 
+        string wxsContent = File.ReadAllText(wxsFilePath);
         string uncommentedXml = RemoveXmlComments(wxsContent);
         XDocument doc = XDocument.Parse(uncommentedXml);
 
         XNamespace ns = "http://schemas.microsoft.com/wix/2006/wi";
 
-        // Step 1: Extract useful file IDs from CustomTable Gres
+        // Step 1: Get useful file IDs
         var usefulFileIds = doc.Descendants(ns + "CustomTable")
             .Where(ct => ct.Attribute("Id")?.Value == "Gres")
             .Descendants(ns + "Row")
             .Select(row => row.Element(ns + "Data")?.Value.Trim())
             .Where(val => !string.IsNullOrEmpty(val))
-            .ToHashSet(); // Using HashSet for fast lookup
+            .ToHashSet();
 
-        Console.WriteLine($"Total useful File IDs found: {usefulFileIds.Count}");
-
-        // Step 2: Find File elements with matching IDs and extract Source extensions
-        var extensions = doc.Descendants(ns + "File")
+        // Step 2: Get File elements with Source and process only those with allowed extensions
+        var targetFiles = doc.Descendants(ns + "File")
             .Where(f => {
                 var id = f.Attribute("Id")?.Value;
-                return id != null && usefulFileIds.Contains(id);
+                var src = f.Attribute("Source")?.Value;
+                return id != null &&
+                       src != null &&
+                       usefulFileIds.Contains(id) &&
+                       !src.EndsWith(".dll", StringComparison.OrdinalIgnoreCase) &&
+                       !src.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
             })
-            .Select(f => Path.GetExtension(f.Attribute("Source")?.Value ?? "").ToLower())
-            .Where(ext => !string.IsNullOrEmpty(ext))
-            .Distinct()
-            .OrderBy(ext => ext)
+            .Select(f => Path.Combine(baseDirectory, f.Attribute("Source")?.Value))
+            .Where(File.Exists) // Ensure the file actually exists
             .ToList();
 
-        Console.WriteLine("Distinct file extensions used:");
-        foreach (var ext in extensions)
+        Console.WriteLine($"Processing {targetFiles.Count} files...");
+
+        foreach (var filePath in targetFiles)
         {
-            Console.WriteLine(ext);
+            string content = File.ReadAllText(filePath);
+
+            // Replace all $HeadSomeText$ → {{SomeText}}
+            string updatedContent = Regex.Replace(
+                content,
+                @"\$(Head)([^$]*)\$",
+                m => {
+            // Remove all "Head" (case-insensitive) from group 2
+            var cleaned = Regex.Replace(m.Groups[2].Value, "Head", "", RegexOptions.IgnoreCase);
+            return $"{{{{{cleaned}}}}}";
+        });
+
+
+            // Write back only if modified
+            if (updatedContent != content)
+            {
+                File.WriteAllText(filePath, updatedContent);
+                Console.WriteLine($"Updated: {filePath}");
+            }
         }
+
+        Console.WriteLine("All eligible files processed.");
     }
 
-    // Removes XML comments from the input string
     static string RemoveXmlComments(string input)
     {
         while (true)
