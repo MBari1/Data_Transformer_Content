@@ -9,43 +9,51 @@ class Program
     static void Main()
     {
         string wxsFilePath = @"path\to\your\file.wxs";
-
-        // Read the file as a string
         string wxsContent = File.ReadAllText(wxsFilePath);
 
-        // Load only uncommented XML using XElement.Parse after stripping comments
         string uncommentedXml = RemoveXmlComments(wxsContent);
-
-        // Parse the XML
         XDocument doc = XDocument.Parse(uncommentedXml);
 
-        // Get all Data elements under CustomTable[@Id='Gres']
-        var fileIds = doc.Descendants("CustomTable")
-                         .Where(ct => ct.Attribute("Id")?.Value == "Gres")
-                         .Descendants("Row")
-                         .Select(row => row.Element("Data")?.Value.Trim())
-                         .Where(value => !string.IsNullOrEmpty(value))
-                         .ToList();
+        XNamespace ns = "http://schemas.microsoft.com/wix/2006/wi";
 
-        // Sort and display
-        fileIds.Sort();
-        foreach (var fileId in fileIds)
+        // Step 1: Extract useful file IDs from CustomTable Gres
+        var usefulFileIds = doc.Descendants(ns + "CustomTable")
+            .Where(ct => ct.Attribute("Id")?.Value == "Gres")
+            .Descendants(ns + "Row")
+            .Select(row => row.Element(ns + "Data")?.Value.Trim())
+            .Where(val => !string.IsNullOrEmpty(val))
+            .ToHashSet(); // Using HashSet for fast lookup
+
+        Console.WriteLine($"Total useful File IDs found: {usefulFileIds.Count}");
+
+        // Step 2: Find File elements with matching IDs and extract Source extensions
+        var extensions = doc.Descendants(ns + "File")
+            .Where(f => {
+                var id = f.Attribute("Id")?.Value;
+                return id != null && usefulFileIds.Contains(id);
+            })
+            .Select(f => Path.GetExtension(f.Attribute("Source")?.Value ?? "").ToLower())
+            .Where(ext => !string.IsNullOrEmpty(ext))
+            .Distinct()
+            .OrderBy(ext => ext)
+            .ToList();
+
+        Console.WriteLine("Distinct file extensions used:");
+        foreach (var ext in extensions)
         {
-            Console.WriteLine(fileId);
+            Console.WriteLine(ext);
         }
     }
 
-    // Remove XML comments
+    // Removes XML comments from the input string
     static string RemoveXmlComments(string input)
     {
         while (true)
         {
             int start = input.IndexOf("<!--");
             if (start == -1) break;
-
             int end = input.IndexOf("-->", start + 4);
             if (end == -1) break;
-
             input = input.Remove(start, end - start + 3);
         }
         return input;
