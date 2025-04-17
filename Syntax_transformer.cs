@@ -49,13 +49,16 @@ class Program
 
             // Replace all $HeadSomeText$ → {{SomeText}}
             string updatedContent = Regex.Replace(
-                content,
-                @"\$(Head)([^$]*)\$",
-                m => {
-            // Remove all "Head" (case-insensitive) from group 2
-            var cleaned = Regex.Replace(m.Groups[2].Value, "Head", "", RegexOptions.IgnoreCase);
-            return $"{{{{{cleaned}}}}}";
-        });
+            content,
+            @"\$(.*?Head.*?)\$",
+            m =>
+            {
+                var cleaned = Regex.Replace(m.Groups[1].Value, "Head", "", RegexOptions.IgnoreCase);
+                return $"{{{{{cleaned}}}}}";
+            },
+            RegexOptions.IgnoreCase
+            );
+
 
 
             // Write back only if modified
