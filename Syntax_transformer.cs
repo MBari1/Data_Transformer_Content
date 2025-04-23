@@ -84,4 +84,83 @@ class Program
         }
         return input;
     }
+
+static void WritePackageCommandFile()
+    {
+        var modifiedFilesPath = "modified-files.txt";
+        var packageCommandsPath = "PackageCommands.txt";
+
+        if (!File.Exists(modifiedFilesPath) || !File.Exists(packageCommandsPath))
+        {
+            Console.WriteLine("Required file(s) not found.");
+            return;
+        }
+
+        // Load modified file paths
+        var modifiedFilePaths = File.ReadAllLines(modifiedFilesPath)
+                                    .Select(path => path.Replace('\\', '/').Trim())
+                                    .ToList();
+
+        // Build a dictionary of fileName -> fullPath for lookup
+        var modifiedFileLookup = modifiedFilePaths
+            .ToDictionary(path => Path.GetFileName(path), path => path);
+
+        var lines = File.ReadAllLines(packageCommandsPath).ToList();
+        var outputLines = new List<string>();
+
+        foreach (var line in lines)
+        {
+            outputLines.Add(line);
+
+            var parts = SplitQuotedLine(line);
+            if (parts.Length != 2)
+                continue;
+
+            var si_1 = parts[0].Trim('"');
+            var si_2 = parts[1].Trim('"');
+
+            // Check if si_1 contains any modified file path
+            var matched = modifiedFilePaths.FirstOrDefault(modPath =>
+                si_1.Contains(modPath, StringComparison.OrdinalIgnoreCase));
+
+            if (!string.IsNullOrEmpty(matched))
+            {
+                var fileName = Path.GetFileName(matched);
+                var sa = $"{si_2}/{fileName}";
+                var sb = $"{fileName}.mykey";
+
+                outputLines.Add($"\"{sa}\" \"{sb}\" \"pin\"");
+            }
+        }
+
+        File.WriteAllLines(packageCommandsPath, outputLines);
+        Console.WriteLine("PackageCommands.txt updated successfully.");
+    }
+
+    // Helper method to split by quoted segments (handles space safely)
+    static string[] SplitQuotedLine(string line)
+    {
+        var result = new List<string>();
+        bool inQuote = false;
+        int start = 0;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == '"')
+            {
+                if (inQuote)
+                {
+                    result.Add(line.Substring(start, i - start + 1).Trim());
+                    inQuote = false;
+                }
+                else
+                {
+                    inQuote = true;
+                    start = i;
+                }
+            }
+        }
+        return result.ToArray();
+    }
+
 }
