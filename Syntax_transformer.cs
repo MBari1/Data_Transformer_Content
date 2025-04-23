@@ -121,7 +121,7 @@ static void WritePackageCommandFile()
 
             // Check if si_1 contains any modified file path
             var matched = modifiedFilePaths.FirstOrDefault(modPath =>
-                si_1.Contains(modPath, StringComparison.OrdinalIgnoreCase));
+    si_1.IndexOf(modPath, StringComparison.OrdinalIgnoreCase) >= 0);
 
             if (!string.IsNullOrEmpty(matched))
             {
