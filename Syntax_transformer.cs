@@ -96,17 +96,24 @@ static void WritePackageCommandFile()
             return;
         }
 
-        // Load modified file paths
-        var modifiedFilePaths = File.ReadAllLines(modifiedFilesPath)
-                                    .Select(path => path.Replace('\\', '/').Trim())
-                                    .ToList();
+        // Load original modified file paths
+        var originalModifiedPaths = File.ReadAllLines(modifiedFilesPath)
+                                        .Where(line => !string.IsNullOrWhiteSpace(line))
+                                        .Select(line => line.Split(' ')[0].Trim().Replace('\\', '/'))
+                                        .ToList();
 
-        // Build a dictionary of fileName -> fullPath for lookup
-        var modifiedFileLookup = modifiedFilePaths
+        // Build a dictionary of fileName -> fullPath
+        var modifiedFileLookup = originalModifiedPaths
             .ToDictionary(path => Path.GetFileName(path), path => path);
 
         var lines = File.ReadAllLines(packageCommandsPath).ToList();
         var outputLines = new List<string>();
+        var updateResults = new Dictionary<string, string>(); // path => Success / Failed
+
+        foreach (var filePath in originalModifiedPaths)
+        {
+            updateResults[filePath] = "Failed";
+        }
 
         foreach (var line in lines)
         {
@@ -119,25 +126,36 @@ static void WritePackageCommandFile()
             var si_1 = parts[0].Trim('"');
             var si_2 = parts[1].Trim('"');
 
-            // Check if si_1 contains any modified file path
-            var matched = modifiedFilePaths.FirstOrDefault(modPath =>
-    si_1.IndexOf(modPath, StringComparison.OrdinalIgnoreCase) >= 0);
+            var matchedPath = originalModifiedPaths.FirstOrDefault(modPath =>
+                si_1.IndexOf(modPath, StringComparison.OrdinalIgnoreCase) >= 0);
 
-            if (!string.IsNullOrEmpty(matched))
+            if (!string.IsNullOrEmpty(matchedPath))
             {
-                var fileName = Path.GetFileName(matched);
+                var fileName = Path.GetFileName(matchedPath);
                 var sa = $"{si_2}/{fileName}";
                 var sb = $"{fileName}.mykey";
 
                 outputLines.Add($"\"{sa}\" \"{sb}\" \"pin\"");
+                updateResults[matchedPath] = "Success";
             }
         }
 
         File.WriteAllLines(packageCommandsPath, outputLines);
-        Console.WriteLine("PackageCommands.txt updated successfully.");
+
+        // Update modified-files.txt with results
+        var updatedModifiedFileLines = originalModifiedPaths
+            .Select(path => $"{path} {updateResults[path]}")
+            .ToList();
+
+        File.WriteAllLines(modifiedFilesPath, updatedModifiedFileLines);
+
+        int successCount = updateResults.Values.Count(v => v == "Success");
+        int failedCount = updateResults.Values.Count(v => v == "Failed");
+
+        Console.WriteLine($"PackageCommands.txt updated successfully.");
+        Console.WriteLine($"Success: {successCount}, Failed: {failedCount}");
     }
 
-    // Helper method to split by quoted segments (handles space safely)
     static string[] SplitQuotedLine(string line)
     {
         var result = new List<string>();
