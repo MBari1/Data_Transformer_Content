@@ -84,4 +84,101 @@ class Program
         }
         return input;
     }
+
+static void WritePackageCommandFile()
+    {
+        var modifiedFilesPath = "modified-files.txt";
+        var packageCommandsPath = "PackageCommands.txt";
+
+        if (!File.Exists(modifiedFilesPath) || !File.Exists(packageCommandsPath))
+        {
+            Console.WriteLine("Required file(s) not found.");
+            return;
+        }
+
+        // Load original modified file paths
+        var originalModifiedPaths = File.ReadAllLines(modifiedFilesPath)
+                                        .Where(line => !string.IsNullOrWhiteSpace(line))
+                                        .Select(line => line.Split(' ')[0].Trim().Replace('\\', '/'))
+                                        .ToList();
+
+        // Build a dictionary of fileName -> fullPath
+        var modifiedFileLookup = originalModifiedPaths
+            .ToDictionary(path => Path.GetFileName(path), path => path);
+
+        var lines = File.ReadAllLines(packageCommandsPath).ToList();
+        var outputLines = new List<string>();
+        var updateResults = new Dictionary<string, string>(); // path => Success / Failed
+
+        foreach (var filePath in originalModifiedPaths)
+        {
+            updateResults[filePath] = "Failed";
+        }
+
+        foreach (var line in lines)
+        {
+            outputLines.Add(line);
+
+            var parts = SplitQuotedLine(line);
+            if (parts.Length != 2)
+                continue;
+
+            var si_1 = parts[0].Trim('"');
+            var si_2 = parts[1].Trim('"');
+
+            var matchedPath = originalModifiedPaths.FirstOrDefault(modPath =>
+                si_1.IndexOf(modPath, StringComparison.OrdinalIgnoreCase) >= 0);
+
+            if (!string.IsNullOrEmpty(matchedPath))
+            {
+                var fileName = Path.GetFileName(matchedPath);
+                var sa = $"{si_2}/{fileName}";
+                var sb = $"{fileName}.mykey";
+
+                outputLines.Add($"\"{sa}\" \"{sb}\" \"pin\"");
+                updateResults[matchedPath] = "Success";
+            }
+        }
+
+        File.WriteAllLines(packageCommandsPath, outputLines);
+
+        // Update modified-files.txt with results
+        var updatedModifiedFileLines = originalModifiedPaths
+            .Select(path => $"{path} {updateResults[path]}")
+            .ToList();
+
+        File.WriteAllLines(modifiedFilesPath, updatedModifiedFileLines);
+
+        int successCount = updateResults.Values.Count(v => v == "Success");
+        int failedCount = updateResults.Values.Count(v => v == "Failed");
+
+        Console.WriteLine($"PackageCommands.txt updated successfully.");
+        Console.WriteLine($"Success: {successCount}, Failed: {failedCount}");
+    }
+
+    static string[] SplitQuotedLine(string line)
+    {
+        var result = new List<string>();
+        bool inQuote = false;
+        int start = 0;
+
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] == '"')
+            {
+                if (inQuote)
+                {
+                    result.Add(line.Substring(start, i - start + 1).Trim());
+                    inQuote = false;
+                }
+                else
+                {
+                    inQuote = true;
+                    start = i;
+                }
+            }
+        }
+        return result.ToArray();
+    }
+
 }
