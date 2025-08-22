@@ -1,0 +1,34 @@
+
+# Load required assembly
+[System.Reflection.Assembly]::Load("System.EnterpriseServices") | Out-Null
+$publish = New-Object System.EnterpriseServices.Internal.Publish
+
+# Assemblies to install
+$assemblies = @(
+    "C:\Path\To\Assembly1.dll",
+    "C:\Path\To\My Files\Assembly2.dll"
+)
+
+# Define event source
+$eventSource = "PowerShell-GacInstaller"
+$logName = "Application"
+
+# Register event source if it doesn't exist
+if (-not [System.Diagnostics.EventLog]::SourceExists($eventSource)) {
+    [System.Diagnostics.EventLog]::CreateEventSource($eventSource, $logName)
+}
+
+foreach ($assembly in $assemblies) {
+    try {
+        Write-Host "Installing $assembly to GAC..."
+        $publish.GacInstall($assembly)
+        $message = "Successfully installed '$assembly' to GAC."
+        Write-Host $message
+        Write-EventLog -LogName $logName -Source $eventSource -EntryType Information -EventId 1000 -Message $message
+    }
+    catch {
+        $message = "Failed to install '$assembly' to GAC. Error: $($_.Exception.Message)"
+        Write-Host $message
+        Write-EventLog -LogName $logName -Source $eventSource -EntryType Error -EventId 1001 -Message $message
+    }
+}
